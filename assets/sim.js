@@ -38,7 +38,7 @@ const PARAMS = {
   L: 1,                 // interaction length scale (MATLAB: L = 1); also M0 for the speed governor
   NU_DEFAULT: 2.5,      // alignment strength (live-editable: sim.nu)
   GRID_HALF: 50,        // static targets are placed in [-GRID_HALF, GRID_HALF]^2
-  N_TARGETS: 441,       // number of static targets
+  N_TARGETS: 400,       // number of static targets (0 to 400)
   TARGET_SEED: 5,       // seed for their random positions
   COLLECTOR_SPEED: 0.4, // top speed of the collector, units per time step (agents move at up to 1)
   CLUSTER_RADIUS: 2.5,   // collector: free agents within this distance of a free agent count toward its group
@@ -180,7 +180,7 @@ class VTPSim {
   /* static targets: nTargets points placed uniformly at random in the square
      [-gridHalf, gridHalf]^2 (seeded, so the same number gives the same layout) */
   buildLattice() {
-    const H = this.gridHalf, n = Math.max(1, Math.round(this.nTargets));
+    const H = this.gridHalf, n = Math.max(0, Math.round(this.nTargets));
     const rng = mulberry32(PARAMS.TARGET_SEED);
     const pts = new Float64Array(2 * n);
     for (let k = 0; k < 2 * n; k++) pts[k] = -H + 2 * H * rng();
