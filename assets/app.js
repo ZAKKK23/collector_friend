@@ -35,6 +35,8 @@ const fieldVelInfo = $("fieldVelInfo");
 const csSlider = $("csSlider"), csVal = $("csVal");
 const atSlider = $("atSlider"), atVal = $("atVal");
 const nzSlider = $("nzSlider"), nzVal = $("nzVal"), noiseInfo = $("noiseInfo");
+const frxSlider = $("frxSlider"), frxVal = $("frxVal"), frySlider = $("frySlider"), fryVal = $("fryVal");
+const dfSlider = $("dfSlider"), dfVal = $("dfVal"), dtSlider = $("dtSlider"), dtVal = $("dtVal"), friendInfo = $("friendInfo");
 const sxSlider = $("sxSlider"), sxVal = $("sxVal");
 const sySlider = $("sySlider"), syVal = $("syVal");
 const stuckInfo = $("stuckInfo");
@@ -74,6 +76,17 @@ frSlider.addEventListener("input", () => { sim.fieldRadius = +frSlider.value; si
 csSlider.addEventListener("input", () => { sim.collectorSpeed = +csSlider.value; showCollector(); });
 atSlider.addEventListener("input", () => { sim.attachSteps = +atSlider.value; showCollector(); });
 nzSlider.addEventListener("input", () => { sim.noiseRate = +nzSlider.value; nzVal.textContent = sim.noiseRate.toFixed(3); });
+function showFriend() {
+  frxVal.textContent = String(sim.friendX);
+  fryVal.textContent = String(sim.friendY);
+  dfVal.textContent = sim.deliverFraction.toFixed(2);
+  dtVal.textContent = String(sim.deliverTimeout);
+}
+frxSlider.addEventListener("input", () => { sim.friendX = +frxSlider.value; showFriend(); });
+frySlider.addEventListener("input", () => { sim.friendY = +frySlider.value; showFriend(); });
+dfSlider.addEventListener("input", () => { sim.deliverFraction = +dfSlider.value; showFriend(); });
+dtSlider.addEventListener("input", () => { sim.deliverTimeout = +dtSlider.value; showFriend(); });
+showFriend();
 /* moving the start sliders puts the collector back at that spot right away (and releases every agent) */
 sxSlider.addEventListener("input", () => { sim.startX = +sxSlider.value; showCollector(); sim.resetCollector(); clearStuckHistory(); });
 sySlider.addEventListener("input", () => { sim.startY = +sySlider.value; showCollector(); sim.resetCollector(); clearStuckHistory(); });
@@ -93,6 +106,11 @@ function restoreDefaults() {
   sim.collectorSpeed = PARAMS.COLLECTOR_SPEED; setSlider(csSlider, sim.collectorSpeed);
   sim.attachSteps = PARAMS.ATTACH_STEPS; setSlider(atSlider, sim.attachSteps);
   sim.noiseRate = PARAMS.NOISE_RATE; setSlider(nzSlider, sim.noiseRate); nzVal.textContent = sim.noiseRate.toFixed(3);
+  sim.friendX = PARAMS.FRIEND_X; setSlider(frxSlider, sim.friendX);
+  sim.friendY = PARAMS.FRIEND_Y; setSlider(frySlider, sim.friendY);
+  sim.deliverFraction = PARAMS.DELIVER_FRACTION; setSlider(dfSlider, sim.deliverFraction);
+  sim.deliverTimeout = PARAMS.DELIVER_TIMEOUT; setSlider(dtSlider, sim.deliverTimeout);
+  showFriend();
   sim.startX = PARAMS.COLLECTOR_X0; setSlider(sxSlider, sim.startX);
   sim.startY = PARAMS.COLLECTOR_Y0; setSlider(sySlider, sim.startY);
   showFieldVel(); showCollector();
@@ -256,6 +274,9 @@ function loop() {
   noiseInfo.textContent = sim.noisy
     ? `burst: noise component at ${((sim.noiseAngle * 180) / Math.PI).toFixed(0)}°`
     : `${sim.noiseSteps}-step bursts, same homing angle for all agents`;
+  friendInfo.textContent = sim.colMode === "deliver"
+    ? `delivering ${sim.nStuck} agents to the friend (${sim.deliveries} trips done)`
+    : `collecting: ${sim.nStuck} of ${sim.nInField} agents in the field attached, step ${sim.collectSteps} (${sim.deliveries} trips done)`;
   statusLine.textContent =
     `t = ${sim.t} | N = ${sim.N} | ${sim.nStatic} static targets + collector (${sim.nStuck} attached, ${sim.attachSteps} steps) | ` +
     `collector v = ${sim.collectorSpeed.toFixed(2)} | field v = ${sim.fieldSpeed.toFixed(2)}, R = ${sim.fieldRadius.toFixed(1)} | \u03bd = ${sim.nu.toFixed(2)}`;
