@@ -36,7 +36,9 @@
    after deliverTimeout steps of collecting, as soon as any agent is attached),
    the collector leaves the field and brings its attached agents to the friend.
    On arrival it releases them (they then follow the normal rules: home to the
-   nearest target, the friend included) and goes back to collecting.
+   nearest target, the friend included) and goes back to the field at returnSpeed,
+   faster than the agents can move. While going back it is not a target for anyone,
+   so it takes no agent away from the friend and re-enters the field empty.
    =========================================================== */
 
 const PARAMS = {
@@ -57,6 +59,7 @@ const PARAMS = {
   FRIEND_Y: 0,
   DELIVER_FRACTION: 0.15, // collector leaves for the friend once this fraction of the agents in the field is attached
   DELIVER_TIMEOUT: 1000,  // ... or after this many steps of collecting, with whatever it has
+  RETURN_SPEED: 1.5,    // speed of the collector going back to the field after a delivery (agents move at up to 1)
   COLLECTOR_X0: 30,     // where the collector starts
   COLLECTOR_Y0: 0,
   FIELD_SPEED: 0.2,     // speed of the whole target field along its circle, units per time step (agents move at up to 1); negative = clockwise
@@ -171,6 +174,7 @@ class VTPSim {
     this.friendY = PARAMS.FRIEND_Y;
     this.deliverFraction = PARAMS.DELIVER_FRACTION;
     this.deliverTimeout = PARAMS.DELIVER_TIMEOUT;
+    this.returnSpeed = PARAMS.RETURN_SPEED;
     this.startX = PARAMS.COLLECTOR_X0;
     this.startY = PARAMS.COLLECTOR_Y0;
     this.colX = this.startX; this.colY = this.startY;
@@ -221,7 +225,7 @@ class VTPSim {
       this.attachLeft = new Int32Array(this.N);  // attached steps remaining
       this.wasNbr = new Uint8Array(this.N);      // collector was a Delaunay neighbour last step
     } else { this.stuck.fill(0); this.attachLeft.fill(0); this.wasNbr.fill(0); }
-    this.colMode = "collect";   // "collect" | "deliver"
+    this.colMode = "collect";   // "collect" | "deliver" | "return"
     this.collectSteps = 0;      // steps since the collector started collecting
     this.colInside = this.inField(this.colX, this.colY); // kept inside the field once it is in it
     this.nInField = 0;
@@ -264,7 +268,9 @@ class VTPSim {
      agents in the field are attached, or, after deliverTimeout steps of collecting,
      as soon as any agent is attached.
      DELIVER mode: it moves to its friend at up to collectorSpeed; on arrival it
-     releases every attached agent and goes back to COLLECT mode. */
+     releases every attached agent and switches to RETURN mode.
+     RETURN mode: it heads back to the field at up to returnSpeed (no agent homes to
+     it or attaches to it meanwhile); once inside the field it goes back to COLLECT mode. */
   updateCollector() {
     const N = this.N, X = this.X, att = this.stuck;
     const cx = this.colX, cy = this.colY;
@@ -306,16 +312,22 @@ class VTPSim {
     }
     const vx = gx - cx, vy = gy - cy, dist = Math.hypot(vx, vy);
     let arrived = false;
-    if (dist <= this.collectorSpeed) { this.colX = gx; this.colY = gy; arrived = true; }
+    const speed = this.colMode === "return" ? this.returnSpeed : this.collectorSpeed;
+    if (dist <= speed) { this.colX = gx; this.colY = gy; arrived = true; }
     else {
-      this.colX = cx + (vx / dist) * this.collectorSpeed;
-      this.colY = cy + (vy / dist) * this.collectorSpeed;
+      this.colX = cx + (vx / dist) * speed;
+      this.colY = cy + (vy / dist) * speed;
     }
     if (this.colMode === "deliver") {
-      if (arrived) { // at the friend: release every attached agent, go back to collecting
+      if (arrived) { // at the friend: release every attached agent, leave quickly
         this.attachLeft.fill(0);
-        this.colMode = "collect"; this.collectSteps = 0;
+        this.colMode = "return";
         this.deliveries++;
+      }
+    } else if (this.colMode === "return") {
+      if (this.inField(this.colX, this.colY)) { // back in the field, empty: collect again
+        this.colMode = "collect"; this.collectSteps = 0; this.colInside = true;
+        this.clampCollectorToField();
       }
     } else {
       if (!this.colInside && this.inField(this.colX, this.colY)) this.colInside = true;
@@ -442,7 +454,7 @@ class VTPSim {
         const frx = this.friendX - px, fry = this.friendY - py; // toward the friend
         // free agents: nearest target (static, collector or friend), same VTP homing for all
         const dF = Math.sqrt(bd), dC = Math.hypot(cxv, cyv), dR = Math.hypot(frx, fry); // dF = Infinity if there are no static targets
-        if (dC <= dF && dC <= dR) { hx = cxv; hy = cyv; }
+        if (this.colMode !== "return" && dC <= dF && dC <= dR) { hx = cxv; hy = cyv; } // the returning collector is nobody's target
         else if (dR < dF) { hx = frx; hy = fry; }
         else { hx = fx; hy = fy; }
       }
