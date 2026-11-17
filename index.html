@@ -175,6 +175,26 @@
           </div>
           <span class="ctrl readout wide" id="noiseInfo"></span>
         </div>
+        <div class="global-row">
+          <span class="label" style="color:#5ad19a">Friend</span>
+          <div class="ctrl">x:
+            <input type="range" id="frxSlider" min="-150" max="150" step="1" value="100" />
+            <span class="readout" id="frxVal">100</span>
+          </div>
+          <div class="ctrl">y:
+            <input type="range" id="frySlider" min="-150" max="150" step="1" value="0" />
+            <span class="readout" id="fryVal">0</span>
+          </div>
+          <div class="ctrl">Leave at fraction attached:
+            <input type="range" id="dfSlider" min="0.01" max="1" step="0.01" value="0.15" />
+            <span class="readout" id="dfVal">0.15</span>
+          </div>
+          <div class="ctrl">or after (steps):
+            <input type="range" id="dtSlider" min="100" max="5000" step="100" value="1000" />
+            <span class="readout" id="dtVal">1000</span>
+          </div>
+          <span class="ctrl readout wide" id="friendInfo"></span>
+        </div>
       </div>
     </div>
   </section>
