@@ -257,7 +257,7 @@ function loop() {
   showExportState();
   stuckInfo.textContent = `${sim.nStuck} of ${sim.N} agents attached`;
   noiseInfo.textContent = sim.noisy
-    ? `burst: all agents homing at ${((sim.noiseAngle * 180) / Math.PI).toFixed(0)}°`
+    ? `burst: noise component at ${((sim.noiseAngle * 180) / Math.PI).toFixed(0)}°`
     : `${sim.noiseSteps}-step bursts, same homing angle for all agents`;
   statusLine.textContent =
     `t = ${sim.t} | N = ${sim.N} | ${sim.nStatic} static targets + collector (${sim.nStuck} attached, ${sim.attachSteps} steps) | ` +
