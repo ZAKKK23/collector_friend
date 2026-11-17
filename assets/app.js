@@ -26,8 +26,7 @@ const numAgents = $("numAgents");
 const spfSlider = $("spfSlider"), spfVal = $("spfVal");
 const viewSelect = $("viewSelect"), headingsCb = $("headingsCb");
 const nuSlider = $("nuSlider"), nuVal = $("nuVal");
-const spXSlider = $("spXSlider"), spXVal = $("spXVal");
-const spYSlider = $("spYSlider"), spYVal = $("spYVal");
+const ntSlider = $("ntSlider"), ntVal = $("ntVal");
 const halfSlider = $("halfSlider"), halfVal = $("halfVal");
 const staticCount = $("staticCount");
 const fsSlider = $("fsSlider"), fsVal = $("fsVal");
@@ -67,8 +66,7 @@ viewSelect.addEventListener("change", () => { sim.viewMode = viewSelect.value; }
 headingsCb.addEventListener("change", () => { sim.showHeadings = headingsCb.checked; });
 nuSlider.addEventListener("input", () => { sim.nu = +nuSlider.value; nuVal.textContent = sim.nu.toFixed(2); });
 
-spXSlider.addEventListener("input", () => { sim.gridSpacingX = +spXSlider.value; spXVal.textContent = sim.gridSpacingX.toFixed(1); rebuildLattice(); });
-spYSlider.addEventListener("input", () => { sim.gridSpacingY = +spYSlider.value; spYVal.textContent = sim.gridSpacingY.toFixed(1); rebuildLattice(); });
+ntSlider.addEventListener("input", () => { sim.nTargets = +ntSlider.value; ntVal.textContent = String(sim.nTargets); rebuildLattice(); });
 halfSlider.addEventListener("input", () => { sim.gridHalf = +halfSlider.value; halfVal.textContent = String(sim.gridHalf); rebuildLattice(); });
 fsSlider.addEventListener("input", () => { sim.fieldSpeed = +fsSlider.value; showFieldVel(); });
 frSlider.addEventListener("input", () => { sim.fieldRadius = +frSlider.value; sim.updateFieldOffset(); showFieldVel(); });
@@ -88,8 +86,7 @@ btnPause.addEventListener("click", () => {
 function setSlider(slider, value) { slider.value = value; }
 function restoreDefaults() {
   sim.nu = PARAMS.NU_DEFAULT; setSlider(nuSlider, sim.nu); nuVal.textContent = sim.nu.toFixed(2);
-  sim.gridSpacingX = PARAMS.GRID_SPACING_X; setSlider(spXSlider, sim.gridSpacingX); spXVal.textContent = sim.gridSpacingX.toFixed(1);
-  sim.gridSpacingY = PARAMS.GRID_SPACING_Y; setSlider(spYSlider, sim.gridSpacingY); spYVal.textContent = sim.gridSpacingY.toFixed(1);
+  sim.nTargets = PARAMS.N_TARGETS; setSlider(ntSlider, sim.nTargets); ntVal.textContent = String(sim.nTargets);
   sim.gridHalf = PARAMS.GRID_HALF; setSlider(halfSlider, sim.gridHalf); halfVal.textContent = String(sim.gridHalf);
   sim.fieldSpeed = PARAMS.FIELD_SPEED; setSlider(fsSlider, sim.fieldSpeed);
   sim.fieldRadius = PARAMS.FIELD_RADIUS; setSlider(frSlider, sim.fieldRadius);
