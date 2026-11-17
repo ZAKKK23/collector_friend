@@ -16,8 +16,8 @@
        cell boundary along the direction of motion (so crowded agents
        slow down, agents on the hull move at full speed).
    TARGET FIELD (the scenario this repo is about):
-     - a rectangular lattice of STATIC point targets across the plane,
-       with independent spacing in x and in y, that moves rigidly around a
+     - STATIC point targets placed uniformly at random in the square [-H, H]^2
+       (you choose how many), that move rigidly around a
        circle centered on the origin (radius and speed you choose live)
    - ONE COLLECTOR target that does not oscillate: it goes after the
      agents (it heads for the densest group of agents not yet attached to it)
@@ -37,9 +37,9 @@ const PARAMS = {
   N_DEFAULT: 400,
   L: 1,                 // interaction length scale (MATLAB: L = 1); also M0 for the speed governor
   NU_DEFAULT: 2.5,      // alignment strength (live-editable: sim.nu)
-  GRID_HALF: 50,        // static lattice covers [-GRID_HALF, GRID_HALF]^2
-  GRID_SPACING_X: 5,    // one static target every GRID_SPACING_X units in x
-  GRID_SPACING_Y: 5,    // ... and every GRID_SPACING_Y units in y
+  GRID_HALF: 50,        // static targets are placed in [-GRID_HALF, GRID_HALF]^2
+  N_TARGETS: 441,       // number of static targets
+  TARGET_SEED: 5,       // seed for their random positions
   COLLECTOR_SPEED: 0.4, // top speed of the collector, units per time step (agents move at up to 1)
   CLUSTER_RADIUS: 2.5,   // collector: free agents within this distance of a free agent count toward its group
   DIST_SCALE: 20,        // collector: a group's score is divided by (1 + distance / DIST_SCALE)
@@ -150,8 +150,7 @@ class VTPSim {
     this.nu = PARAMS.NU_DEFAULT;
     this.L = PARAMS.L;
     this.gridHalf = PARAMS.GRID_HALF;
-    this.gridSpacingX = PARAMS.GRID_SPACING_X;
-    this.gridSpacingY = PARAMS.GRID_SPACING_Y;
+    this.nTargets = PARAMS.N_TARGETS;
     this.collectorSpeed = PARAMS.COLLECTOR_SPEED;
     this.clusterRadius = PARAMS.CLUSTER_RADIUS;
     this.distScale = PARAMS.DIST_SCALE;
@@ -178,18 +177,15 @@ class VTPSim {
     this.setup(N);
   }
 
-  /* static lattice: meshgrid(-gridHalf:spacingX:gridHalf, -gridHalf:spacingY:gridHalf) */
+  /* static targets: nTargets points placed uniformly at random in the square
+     [-gridHalf, gridHalf]^2 (seeded, so the same number gives the same layout) */
   buildLattice() {
-    const H = this.gridHalf;
-    const sx = Math.max(this.gridSpacingX, 0.25), sy = Math.max(this.gridSpacingY, 0.25);
-    const nx = Math.floor((2 * H) / sx + 1e-9), ny = Math.floor((2 * H) / sy + 1e-9);
-    this.spX = sx; this.spY = sy; this.cellsX = nx; this.cellsY = ny;
-    const pts = new Float64Array(2 * (nx + 1) * (ny + 1));
-    let k = 0;
-    for (let iy = 0; iy <= ny; iy++)
-      for (let ix = 0; ix <= nx; ix++) { pts[k++] = -H + ix * sx; pts[k++] = -H + iy * sy; }
+    const H = this.gridHalf, n = Math.max(1, Math.round(this.nTargets));
+    const rng = mulberry32(PARAMS.TARGET_SEED);
+    const pts = new Float64Array(2 * n);
+    for (let k = 0; k < 2 * n; k++) pts[k] = -H + 2 * H * rng();
     this.statics = pts;
-    this.nStatic = (nx + 1) * (ny + 1);
+    this.nStatic = n;
   }
 
   /* angular velocity of the field on its circle, rad per step (speed = radius * omega) */
@@ -225,14 +221,12 @@ class VTPSim {
     return isNbr;
   }
 
-  /* keep the collector inside the target field: the lattice rectangle
-     [-gridHalf, -gridHalf + cellsX*spX] x [-gridHalf, -gridHalf + cellsY*spY],
+  /* keep the collector inside the target field: the square [-gridHalf, gridHalf]^2,
      shifted by the current field offset (so it moves with the field) */
   clampCollectorToField() {
     const H = this.gridHalf;
-    const x0 = this.offX - H, y0 = this.offY - H;
-    this.colX = clamp(this.colX, x0, x0 + this.cellsX * this.spX);
-    this.colY = clamp(this.colY, y0, y0 + this.cellsY * this.spY);
+    this.colX = clamp(this.colX, this.offX - H, this.offX + H);
+    this.colY = clamp(this.colY, this.offY - H, this.offY + H);
   }
 
   /* collector: go after the densest group of agents not attached to it. Each
@@ -379,12 +373,13 @@ class VTPSim {
         hx = cxv; hy = cyv; this.stuck[i] = 1; attached++; this.attachLeft[i]--;
       } else {
         this.stuck[i] = 0;
-        // nearest lattice point (the field): the lattice is rectangular, so round
-        // each axis independently, in the frame that moves with the field
-        const H = this.gridHalf, qx = px - this.offX, qy = py - this.offY;
-        const ix = clamp(Math.round((qx + H) / this.spX), 0, this.cellsX);
-        const iy = clamp(Math.round((qy + H) / this.spY), 0, this.cellsY);
-        const fx = -H + ix * this.spX - qx, fy = -H + iy * this.spY - qy; // toward the field
+        // nearest static target (scan over all of them), in the frame that moves with the field
+        const qx = px - this.offX, qy = py - this.offY, T = this.statics;
+        let bd = Infinity, fx = 0, fy = 0; // toward the field
+        for (let k = 0; k < this.nStatic; k++) {
+          const dx = T[2 * k] - qx, dy = T[2 * k + 1] - qy, d2 = dx * dx + dy * dy;
+          if (d2 < bd) { bd = d2; fx = dx; fy = dy; }
+        }
         // free agents: nearest target (lattice or collector), same VTP homing for both
         if (Math.hypot(cxv, cyv) < Math.hypot(fx, fy)) { hx = cxv; hy = cyv; } else { hx = fx; hy = fy; }
       }
