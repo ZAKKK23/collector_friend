@@ -29,8 +29,8 @@
      steps, and can attach again only after the collector has stopped being
      its neighbour and become one again.
    NOISE: on each step, with probability noiseRate, a burst of NOISE_STEPS steps
-   starts during which every agent gets the same unit homing vector, at an angle
-   drawn at random for that burst (in place of its homing toward a target).
+   starts during which every agent's homing vector gets the same added unit
+   component, at an angle drawn at random for that burst.
    =========================================================== */
 
 const PARAMS = {
@@ -348,8 +348,8 @@ class VTPSim {
       if (m > 0) { nx[i] = this.U[2 * i] / m; ny[i] = this.U[2 * i + 1] / m; }
     }
 
-    // noise: start a burst with probability noiseRate; during a burst every agent
-    // gets the same unit homing vector, at the angle drawn for that burst
+    // noise: start a burst with probability noiseRate; during a burst every agent's
+    // homing gets the same added unit component, at the angle drawn for that burst
     if (this.noiseLeft === 0 && this.rngN() < this.noiseRate) {
       this.noiseLeft = this.noiseSteps;
       this.noiseAngle = 2 * Math.PI * this.rngN();
@@ -390,7 +390,7 @@ class VTPSim {
       }
       const hn = Math.hypot(hx, hy);
       if (hn > 0) { hx = ((1 - s[i]) * hx) / hn; hy = ((1 - s[i]) * hy) / hn; } else { hx = 0; hy = 0; }
-      if (this.noisy) { hx = nzx; hy = nzy; } // noise burst: same homing vector for every agent
+      if (this.noisy) { hx += nzx; hy += nzy; } // noise burst: add the same unit component to every agent's homing
 
       // direction
       const u1x = (rx[i] + hx + nu * ax) / (1 + nu);
