@@ -274,7 +274,9 @@ function loop() {
   noiseInfo.textContent = sim.noisy
     ? `burst: noise component at ${((sim.noiseAngle * 180) / Math.PI).toFixed(0)}°`
     : `${sim.noiseSteps}-step bursts, same homing angle for all agents`;
-  friendInfo.textContent = sim.colMode === "deliver"
+  friendInfo.textContent = sim.colMode === "return"
+    ? `going back to the field (${sim.deliveries} trips done)`
+    : sim.colMode === "deliver"
     ? `delivering ${sim.nStuck} agents to the friend (${sim.deliveries} trips done)`
     : `collecting: ${sim.nStuck} of ${sim.nInField} agents in the field attached, step ${sim.collectSteps} (${sim.deliveries} trips done)`;
   statusLine.textContent =
