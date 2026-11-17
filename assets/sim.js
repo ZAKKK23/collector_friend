@@ -31,6 +31,12 @@
    NOISE: on each step, with probability noiseRate, a burst of NOISE_STEPS steps
    starts during which every agent's homing vector gets the same added unit
    component, at an angle drawn at random for that burst.
+   FRIEND: the collector has a friend, a static target outside the square. Once
+   at least deliverFraction of the agents in the field are attached to it (or,
+   after deliverTimeout steps of collecting, as soon as any agent is attached),
+   the collector leaves the field and brings its attached agents to the friend.
+   On arrival it releases them (they then follow the normal rules: home to the
+   nearest target, the friend included) and goes back to collecting.
    =========================================================== */
 
 const PARAMS = {
@@ -47,6 +53,10 @@ const PARAMS = {
   NOISE_STEPS: 5,       // length of a noise burst, in steps
   NOISE_RATE: 0.01,     // probability per step that a noise burst starts (0 = no noise)
   NOISE_SEED: 7,
+  FRIEND_X: 100,        // the collector's friend: a static target outside the square
+  FRIEND_Y: 0,
+  DELIVER_FRACTION: 0.15, // collector leaves for the friend once this fraction of the agents in the field is attached
+  DELIVER_TIMEOUT: 1000,  // ... or after this many steps of collecting, with whatever it has
   COLLECTOR_X0: 30,     // where the collector starts
   COLLECTOR_Y0: 0,
   FIELD_SPEED: 0.2,     // speed of the whole target field along its circle, units per time step (agents move at up to 1); negative = clockwise
@@ -157,6 +167,10 @@ class VTPSim {
     this.attachSteps = PARAMS.ATTACH_STEPS;
     this.noiseSteps = PARAMS.NOISE_STEPS;
     this.noiseRate = PARAMS.NOISE_RATE;
+    this.friendX = PARAMS.FRIEND_X;
+    this.friendY = PARAMS.FRIEND_Y;
+    this.deliverFraction = PARAMS.DELIVER_FRACTION;
+    this.deliverTimeout = PARAMS.DELIVER_TIMEOUT;
     this.startX = PARAMS.COLLECTOR_X0;
     this.startY = PARAMS.COLLECTOR_Y0;
     this.colX = this.startX; this.colY = this.startY;
@@ -207,6 +221,11 @@ class VTPSim {
       this.attachLeft = new Int32Array(this.N);  // attached steps remaining
       this.wasNbr = new Uint8Array(this.N);      // collector was a Delaunay neighbour last step
     } else { this.stuck.fill(0); this.attachLeft.fill(0); this.wasNbr.fill(0); }
+    this.colMode = "collect";   // "collect" | "deliver"
+    this.collectSteps = 0;      // steps since the collector started collecting
+    this.colInside = this.inField(this.colX, this.colY); // kept inside the field once it is in it
+    this.nInField = 0;
+    this.deliveries = 0;
     this.nStuck = 0;
     this.trail = [];
   }
@@ -229,41 +248,79 @@ class VTPSim {
     this.colY = clamp(this.colY, this.offY - H, this.offY + H);
   }
 
-  /* collector: go after the densest group of agents not attached to it. Each
-     free agent scores (number of free agents within clusterRadius of it)
-     / (1 + its distance to the collector / distScale), and the collector moves
-     toward the best-scoring one at up to collectorSpeed (attachment is decided
-     in compute(), from the collector's Delaunay neighbours).
-     If every agent is attached it moves to the centroid of the group. It is
-     then kept inside the target field. */
+  /* is (x, y) inside the target field: the square [-gridHalf, gridHalf]^2 shifted by the field offset */
+  inField(x, y) {
+    const H = this.gridHalf;
+    return Math.abs(x - this.offX) <= H && Math.abs(y - this.offY) <= H;
+  }
+
+  /* collector. COLLECT mode: go after the densest group of free agents inside the
+     target field. Each such agent scores (number of free in-field agents within
+     clusterRadius of it) / (1 + its distance to the collector / distScale), and the
+     collector moves toward the best-scoring one at up to collectorSpeed (attachment
+     is decided in compute(), from the collector's Delaunay neighbours). If there is
+     none it moves to the centroid of the in-field agents. Once inside the field it
+     is kept there. It switches to DELIVER mode when at least deliverFraction of the
+     agents in the field are attached, or, after deliverTimeout steps of collecting,
+     as soon as any agent is attached.
+     DELIVER mode: it moves to its friend at up to collectorSpeed; on arrival it
+     releases every attached agent and goes back to COLLECT mode. */
   updateCollector() {
     const N = this.N, X = this.X, att = this.stuck;
     const cx = this.colX, cy = this.colY;
-    const R2 = this.clusterRadius * this.clusterRadius;
-    let mx = 0, my = 0, best = -1, bi = -1;
+    const inF = new Uint8Array(N);
+    let nIn = 0, nAtt = 0;
     for (let i = 0; i < N; i++) {
-      const x = X[2 * i], y = X[2 * i + 1];
-      mx += x; my += y;
-      if (att[i]) continue;
-      let c = 0;
-      for (let j = 0; j < N; j++) {
-        if (att[j]) continue;
-        const dx = X[2 * j] - x, dy = X[2 * j + 1] - y;
-        if (dx * dx + dy * dy < R2) c++;
+      if (att[i]) nAtt++;
+      if (this.inField(X[2 * i], X[2 * i + 1])) { inF[i] = 1; nIn++; }
+    }
+    this.nInField = nIn;
+    if (this.colMode === "collect") {
+      this.collectSteps++;
+      if (nAtt > 0 && (nAtt >= this.deliverFraction * nIn || this.collectSteps >= this.deliverTimeout)) {
+        this.colMode = "deliver"; this.colInside = false;
       }
-      const score = c / (1 + Math.hypot(x - cx, y - cy) / this.distScale);
-      if (score > best) { best = score; bi = i; }
     }
     let gx, gy;
-    if (bi >= 0) { gx = X[2 * bi]; gy = X[2 * bi + 1]; }
-    else { gx = mx / N; gy = my / N; }
-    const vx = gx - cx, vy = gy - cy, dist = Math.hypot(vx, vy);
-    if (dist > 0) {
-      const step = Math.min(this.collectorSpeed, dist);
-      this.colX = cx + (vx / dist) * step;
-      this.colY = cy + (vy / dist) * step;
+    if (this.colMode === "deliver") { gx = this.friendX; gy = this.friendY; }
+    else {
+      const R2 = this.clusterRadius * this.clusterRadius;
+      let mx = 0, my = 0, best = -1, bi = -1;
+      for (let i = 0; i < N; i++) {
+        if (!inF[i]) continue;
+        const x = X[2 * i], y = X[2 * i + 1];
+        mx += x; my += y;
+        if (att[i]) continue;
+        let c = 0;
+        for (let j = 0; j < N; j++) {
+          if (att[j] || !inF[j]) continue;
+          const dx = X[2 * j] - x, dy = X[2 * j + 1] - y;
+          if (dx * dx + dy * dy < R2) c++;
+        }
+        const score = c / (1 + Math.hypot(x - cx, y - cy) / this.distScale);
+        if (score > best) { best = score; bi = i; }
+      }
+      if (bi >= 0) { gx = X[2 * bi]; gy = X[2 * bi + 1]; }
+      else if (nIn > 0) { gx = mx / nIn; gy = my / nIn; }
+      else { gx = this.offX; gy = this.offY; } // nobody in the field: go back to its center
     }
-    this.clampCollectorToField();
+    const vx = gx - cx, vy = gy - cy, dist = Math.hypot(vx, vy);
+    let arrived = false;
+    if (dist <= this.collectorSpeed) { this.colX = gx; this.colY = gy; arrived = true; }
+    else {
+      this.colX = cx + (vx / dist) * this.collectorSpeed;
+      this.colY = cy + (vy / dist) * this.collectorSpeed;
+    }
+    if (this.colMode === "deliver") {
+      if (arrived) { // at the friend: release every attached agent, go back to collecting
+        this.attachLeft.fill(0);
+        this.colMode = "collect"; this.collectSteps = 0;
+        this.deliveries++;
+      }
+    } else {
+      if (!this.colInside && this.inField(this.colX, this.colY)) this.colInside = true;
+      if (this.colInside) this.clampCollectorToField();
+    }
   }
 
   /* new run. seeded = true reproduces the MATLAB-style fixed seeds. */
@@ -311,8 +368,9 @@ class VTPSim {
 
     // attach on first contact: the collector has just become a Delaunay neighbour
     const isNbr = this.collectorNeighbors();
+    const canAttach = this.colMode === "collect" && this.colInside; // no new attachments while delivering or coming back
     for (let i = 0; i < N; i++) {
-      if (isNbr[i] && !this.wasNbr[i] && this.attachLeft[i] === 0) this.attachLeft[i] = this.attachSteps;
+      if (canAttach && isNbr[i] && !this.wasNbr[i] && this.attachLeft[i] === 0) this.attachLeft[i] = this.attachSteps;
       this.wasNbr[i] = isNbr[i];
     }
 
@@ -370,7 +428,8 @@ class VTPSim {
       let hx, hy;
       if (this.attachLeft[i] > 0) {
         // attached: home to the collector only, ignoring every other target
-        hx = cxv; hy = cyv; this.stuck[i] = 1; attached++; this.attachLeft[i]--;
+        hx = cxv; hy = cyv; this.stuck[i] = 1; attached++;
+        if (this.colMode !== "deliver") this.attachLeft[i]--; // the countdown is paused while delivering
       } else {
         this.stuck[i] = 0;
         // nearest static target (scan over all of them), in the frame that moves with the field
@@ -380,8 +439,12 @@ class VTPSim {
           const dx = T[2 * k] - qx, dy = T[2 * k + 1] - qy, d2 = dx * dx + dy * dy;
           if (d2 < bd) { bd = d2; fx = dx; fy = dy; }
         }
-        // free agents: nearest target (lattice or collector), same VTP homing for both
-        if (Math.hypot(cxv, cyv) < Math.hypot(fx, fy)) { hx = cxv; hy = cyv; } else { hx = fx; hy = fy; }
+        const frx = this.friendX - px, fry = this.friendY - py; // toward the friend
+        // free agents: nearest target (static, collector or friend), same VTP homing for all
+        const dF = Math.sqrt(bd), dC = Math.hypot(cxv, cyv), dR = Math.hypot(frx, fry); // dF = Infinity if there are no static targets
+        if (dC <= dF && dC <= dR) { hx = cxv; hy = cyv; }
+        else if (dR < dF) { hx = frx; hy = fry; }
+        else { hx = fx; hy = fy; }
       }
       const hn = Math.hypot(hx, hy);
       if (hn > 0) { hx = ((1 - s[i]) * hx) / hn; hy = ((1 - s[i]) * hy) / hn; } else { hx = 0; hy = 0; }
@@ -440,6 +503,7 @@ class VTPSim {
       cx = following ? this.offX : 0;
       cy = following ? this.offY : 0;
       hw = 1.15 * (this.gridHalf + (following ? 0 : this.fieldRadius)) + 2;
+      if (!following) hw = Math.max(hw, 1.1 * Math.max(Math.abs(this.friendX), Math.abs(this.friendY)) + 5);
     }
     if (!this.cam) this.cam = { cx, cy, hw };
     const a = 0.08;
@@ -486,6 +550,14 @@ class VTPSim {
       if (gx < xlo || gx > xhi || gy < ylo || gy > yhi) continue;
       const [px, py] = toPx(gx, gy);
       ctx.fillRect(px - sq / 2, py - sq / 2, sq, sq);
+    }
+
+    // the collector's friend (static target outside the field)
+    {
+      const [px, py] = toPx(this.friendX, this.friendY);
+      ctx.strokeStyle = "#5ad19a"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#5ad19a"; ctx.fillRect(px - 3.5, py - 3.5, 7, 7);
     }
 
     // collector marker
