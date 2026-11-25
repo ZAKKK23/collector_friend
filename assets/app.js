@@ -271,9 +271,7 @@ function loop() {
   drawStuckChart();
   showExportState();
   stuckInfo.textContent = `${sim.nStuck} of ${sim.N} agents attached`;
-  noiseInfo.textContent = sim.noisy
-    ? `burst: noise component at ${((sim.noiseAngle * 180) / Math.PI).toFixed(0)}°`
-    : `${sim.noiseSteps}-step bursts, same homing angle for all agents`;
+  noiseInfo.textContent = `${sim.nNoisy} of ${sim.N} agents in a ${sim.noiseSteps}-step burst, each at its own angle`;
   friendInfo.textContent = sim.colMode === "return"
     ? `going back to the field (${sim.deliveries} trips done)`
     : sim.colMode === "deliver"
