@@ -28,9 +28,10 @@
      homes only to the collector, ignoring every other target, for attachSteps
      steps, and can attach again only after the collector has stopped being
      its neighbour and become one again.
-   NOISE: on each step, with probability noiseRate, a burst of NOISE_STEPS steps
-   starts during which every agent's homing vector gets the same added unit
-   component, at an angle drawn at random for that burst.
+   NOISE: independently for each agent, on each step, with probability noiseRate,
+   a burst of NOISE_STEPS steps starts during which that agent's homing vector
+   gets an added unit component, at an angle drawn at random for that agent's
+   burst.
    FRIEND: the collector has a friend, a static target outside the square. Once
    at least deliverFraction of the agents in the field are attached to it (or,
    after deliverTimeout steps of collecting, as soon as any agent is attached),
@@ -359,7 +360,9 @@ class VTPSim {
     this.updateFieldOffset();
     this.cam = null;
     this.rngN = mulberry32(seeded ? PARAMS.NOISE_SEED : (Math.random() * 1e9) | 0);
-    this.noiseLeft = 0; this.noiseAngle = 0; this.noisy = false;
+    this.noiseLeft = new Int32Array(N);   // per-agent burst steps remaining
+    this.noiseAngle = new Float64Array(N); // per-agent burst angle
+    this.nNoisy = 0;
     this.resetCollector();
     this.compute();
     if (this.onSetupChange) this.onSetupChange();
@@ -412,15 +415,17 @@ class VTPSim {
       if (m > 0) { nx[i] = this.U[2 * i] / m; ny[i] = this.U[2 * i + 1] / m; }
     }
 
-    // noise: start a burst with probability noiseRate; during a burst every agent's
-    // homing gets the same added unit component, at the angle drawn for that burst
-    if (this.noiseLeft === 0 && this.rngN() < this.noiseRate) {
-      this.noiseLeft = this.noiseSteps;
-      this.noiseAngle = 2 * Math.PI * this.rngN();
+    // noise: each agent independently starts a burst with probability noiseRate;
+    // during its burst that agent's homing gets an added unit component, at the
+    // angle drawn for its own burst
+    const nzL = this.noiseLeft, nzA = this.noiseAngle;
+    let nNoisy = 0;
+    for (let i = 0; i < N; i++) {
+      if (nzL[i] === 0 && this.rngN() < this.noiseRate) {
+        nzL[i] = this.noiseSteps;
+        nzA[i] = 2 * Math.PI * this.rngN();
+      }
     }
-    this.noisy = this.noiseLeft > 0;
-    if (this.noisy) this.noiseLeft--;
-    const nzx = Math.cos(this.noiseAngle), nzy = Math.sin(this.noiseAngle);
 
     let attached = 0;
     for (let i = 0; i < N; i++) {
@@ -460,7 +465,7 @@ class VTPSim {
       }
       const hn = Math.hypot(hx, hy);
       if (hn > 0) { hx = ((1 - s[i]) * hx) / hn; hy = ((1 - s[i]) * hy) / hn; } else { hx = 0; hy = 0; }
-      if (this.noisy) { hx += nzx; hy += nzy; } // noise burst: add the same unit component to every agent's homing
+      if (nzL[i] > 0) { hx += Math.cos(nzA[i]); hy += Math.sin(nzA[i]); nzL[i]--; nNoisy++; } // this agent's own noise burst
 
       // direction
       const u1x = (rx[i] + hx + nu * ax) / (1 + nu);
@@ -486,6 +491,7 @@ class VTPSim {
       this.Unext[2 * i] = sp * u1x; this.Unext[2 * i + 1] = sp * u1y;
     }
     this.nStuck = attached;
+    this.nNoisy = nNoisy;
   }
 
   /* apply the position update, advance time and the field, compute the next step */
